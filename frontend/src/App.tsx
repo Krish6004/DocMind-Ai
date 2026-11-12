@@ -2,10 +2,14 @@ import React, { Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ToastProvider } from '@/context/ToastContext'
+import { AuthProvider } from '@/context/AuthContext'
+import ProtectedRoute from '@/components/common/ProtectedRoute'
 import AppLayout from '@/layout/AppLayout'
 import Skeleton, { SkeletonCard } from '@/components/common/Skeleton'
 
 // Code-split pages for performance
+const LoginPage = lazy(() => import('@/pages/LoginPage'))
+const RegisterPage = lazy(() => import('@/pages/RegisterPage'))
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
 const ChatPage = lazy(() => import('@/pages/ChatPage'))
 const DocumentsPage = lazy(() => import('@/pages/DocumentsPage'))
@@ -42,9 +46,27 @@ export const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<AppLayout />}>
+        <AuthProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route
+                path="/login"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <LoginPage />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/register"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <RegisterPage />
+                  </Suspense>
+                }
+              />
+              <Route element={<ProtectedRoute />}>
+                <Route path="/" element={<AppLayout />}>
               <Route
                 index
                 element={
@@ -95,8 +117,10 @@ export const App: React.FC = () => {
               />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
+              </Route>
           </Routes>
         </BrowserRouter>
+        </AuthProvider>
       </ToastProvider>
     </QueryClientProvider>
   )

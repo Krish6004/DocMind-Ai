@@ -245,6 +245,13 @@ def matches_metadata_filter(
         if ts and ts > str(date_to).strip():
             return False
 
+    # 5. User isolation filter (Sprint 7.0)
+    target_user_id = filter_dict.get("user_id")
+    if target_user_id and target_user_id not in ("All", "default", ""):
+        chunk_user = meta.get("user_id")
+        if chunk_user and chunk_user != target_user_id:
+            return False
+
     return True
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from backend.app.api.v1.endpoints import chat, documents, evaluation, health, providers, root, upload
+from backend.app.api.v1.endpoints.sessions import sessions_router, user_settings_router
 
 api_router = APIRouter()
 
@@ -29,3 +30,7 @@ api_router.include_router(providers.router, prefix="/providers", tags=["AI Provi
 
 # Enterprise Evaluation & Benchmarking endpoints
 api_router.include_router(evaluation.router, prefix="/evaluation", tags=["Evaluation & Benchmarking"])
+
+# Multi-User Chat Sessions & User Settings (MongoDB Atlas)
+api_router.include_router(sessions_router, prefix="/sessions", tags=["Chat Sessions"])
+api_router.include_router(user_settings_router, prefix="/user", tags=["User Settings"])

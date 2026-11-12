@@ -27,6 +27,13 @@ class EvaluationHistoryModel(Base):
         index=True,
         doc="Unique primary key for the evaluation record",
     )
+    user_id = Column(
+        String(64),
+        nullable=False,
+        default="default",
+        index=True,
+        doc="Owner user ID for strict multi-user isolation",
+    )
     request_id = Column(
         String(64),
         nullable=False,

@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import ChatService from '@/services/chatService'
+import authService from '@/services/authService'
+import { useAuth } from '@/context/AuthContext'
 import type { ChatMessageItem } from '@/components/Chat/ChatMessages'
 import type { ConversationSession } from '@/components/Chat/ConversationSidebar'
 import type { ChatResponseData, ChatHistoryTurn } from '@/types'
@@ -27,9 +29,10 @@ export const DEFAULT_SESSIONS: ConversationSession[] = [
 
 export function useChatWorkspace() {
   const queryClient = useQueryClient()
+  const { user } = useAuth()
   const promptInputRef = useRef<HTMLTextAreaElement>(null)
 
-  // 1. Sessions State with localStorage persistence
+  // 1. Sessions State synced with MongoDB Atlas per authenticated user
   const [sessions, setSessions] = useState<ConversationSession[]>(() => {
     try {
       const saved = localStorage.getItem(SESSIONS_STORAGE_KEY)
@@ -37,12 +40,42 @@ export function useChatWorkspace() {
     } catch {
       // ignore
     }
-    return DEFAULT_SESSIONS
+    return [{ id: `session-${Date.now()}`, title: 'New Chat', lastMessage: '', updatedAt: 'Just now', isPinned: false }]
   })
 
   const [activeSessionId, setActiveSessionId] = useState<string>(() => {
-    return sessions[0]?.id || 'default'
+    return sessions[0]?.id || `session-${Date.now()}`
   })
+
+  // Fetch user-specific sessions from MongoDB Atlas
+  const mongoSessionsQuery = useQuery({
+    queryKey: ['mongo-sessions', user?.id],
+    queryFn: () => authService.listSessions(),
+    enabled: Boolean(user?.id),
+    staleTime: 15000,
+  })
+
+  useEffect(() => {
+    if (mongoSessionsQuery.data) {
+      if (mongoSessionsQuery.data.length > 0) {
+        const mapped: ConversationSession[] = mongoSessionsQuery.data.map((s) => ({
+          id: s.conversation_id,
+          title: s.title,
+          lastMessage: s.last_message,
+          updatedAt: s.updated_at ? new Date(s.updated_at).toLocaleDateString() : 'Recent',
+          isPinned: s.is_pinned,
+        }))
+        setSessions(mapped)
+        if (!mapped.some((m) => m.id === activeSessionId)) {
+          setActiveSessionId(mapped[0].id)
+        }
+      } else {
+        const freshId = `session-${Date.now()}`
+        setSessions([{ id: freshId, title: 'New Chat', lastMessage: '', updatedAt: 'Just now', isPinned: false }])
+        setActiveSessionId(freshId)
+      }
+    }
+  }, [mongoSessionsQuery.data])
 
   // Persist sessions
   useEffect(() => {
@@ -264,6 +297,7 @@ export function useChatWorkspace() {
     setSelectedMessageId(null)
     setHighlightedSourceNum(null)
     setTimeout(() => promptInputRef.current?.focus(), 100)
+    authService.createSession('New Chat', newId).catch(() => {})
   }, [])
 
   // Action: Delete Session
@@ -277,6 +311,7 @@ export function useChatWorkspace() {
         return next
       })
       localStorage.removeItem(`${LOCAL_MESSAGES_KEY_PREFIX}${id}`)
+      authService.deleteSession(id).catch(() => {})
     },
     [activeSessionId]
   )
@@ -286,12 +321,20 @@ export function useChatWorkspace() {
     setSessions((prev) =>
       prev.map((s) => (s.id === id ? { ...s, title: newTitle } : s))
     )
+    authService.updateSession(id, { title: newTitle }).catch(() => {})
   }, [])
 
   // Action: Toggle Pin
   const handleTogglePin = useCallback((id: string) => {
     setSessions((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, isPinned: !s.isPinned } : s))
+      prev.map((s) => {
+        if (s.id === id) {
+          const nextPin = !s.isPinned
+          authService.updateSession(id, { is_pinned: nextPin }).catch(() => {})
+          return { ...s, isPinned: nextPin }
+        }
+        return s
+      })
     )
   }, [])
 

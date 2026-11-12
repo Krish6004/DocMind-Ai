@@ -29,6 +29,13 @@ class DocumentModel(Base):
         index=True,
         doc="Unique UUID identifier for the document record",
     )
+    user_id = Column(
+        String(64),
+        nullable=False,
+        default="default",
+        index=True,
+        doc="Owner user ID for strict multi-user isolation",
+    )
     filename = Column(
         String(255),
         nullable=False,

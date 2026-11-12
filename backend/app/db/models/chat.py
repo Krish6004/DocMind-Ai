@@ -26,6 +26,13 @@ class ChatHistoryModel(Base):
         index=True,
         doc="Unique identifier for the chat turn",
     )
+    user_id = Column(
+        String(64),
+        nullable=False,
+        default="default",
+        index=True,
+        doc="Owner user ID for strict multi-user isolation",
+    )
     session_id = Column(
         String(64),
         nullable=False,

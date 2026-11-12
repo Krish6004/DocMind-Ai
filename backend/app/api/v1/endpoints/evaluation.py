@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from backend.app.api.deps import (
+    get_current_user_id,
     get_database_session,
     get_evaluation_service,
     get_provider_manager,
@@ -44,10 +45,11 @@ router = APIRouter()
     description="Retrieve the most recent evaluation record stored in evaluation_history.",
 )
 def get_latest_evaluation(
+    user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_database_session),
     evaluation_service: EvaluationService = Depends(get_evaluation_service),
 ) -> BaseResponse[EvaluationRecord | None]:
-    record = evaluation_service.get_latest(db)
+    record = evaluation_service.get_latest(db, user_id=user_id)
     return BaseResponse(
         success=True,
         message="Retrieved latest evaluation record." if record else "No evaluations recorded yet.",
@@ -65,10 +67,11 @@ def get_latest_evaluation(
 def get_evaluation_history(
     limit: int = Query(default=100, ge=1, le=500, description="Max evaluation records to return"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
+    user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_database_session),
     evaluation_service: EvaluationService = Depends(get_evaluation_service),
 ) -> BaseResponse[EvaluationHistoryListResponse]:
-    history = evaluation_service.get_history(db, limit=limit, offset=offset)
+    history = evaluation_service.get_history(db, limit=limit, offset=offset, user_id=user_id)
     return BaseResponse(
         success=True,
         message=f"Retrieved {history.total} evaluation record(s).",
@@ -84,10 +87,11 @@ def get_evaluation_history(
     description="Retrieve aggregated quality, retrieval, performance, provider comparison, and chart trend telemetry.",
 )
 def get_evaluation_summary(
+    user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_database_session),
     evaluation_service: EvaluationService = Depends(get_evaluation_service),
 ) -> BaseResponse[EvaluationSummaryResponse]:
-    summary = evaluation_service.get_summary(db)
+    summary = evaluation_service.get_summary(db, user_id=user_id)
     return BaseResponse(
         success=True,
         message="Evaluation telemetry summary aggregated successfully.",
@@ -104,6 +108,7 @@ def get_evaluation_summary(
 )
 def run_benchmark_suite(
     request: BenchmarkRunRequest = BenchmarkRunRequest(),
+    user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_database_session),
     evaluation_service: EvaluationService = Depends(get_evaluation_service),
     retriever: Any = Depends(get_retriever),
@@ -113,6 +118,7 @@ def run_benchmark_suite(
     try:
         result = evaluation_service.run_benchmark(
             db=db,
+            user_id=user_id,
             dataset_name=request.dataset_name,
             max_queries=request.max_queries,
             retriever=retriever,
@@ -137,10 +143,11 @@ def run_benchmark_suite(
 )
 def export_evaluation_report(
     format: str = Query(default="json", pattern="^(csv|json|pdf)$", description="Export format: csv, json, or pdf"),
+    user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_database_session),
     evaluation_service: EvaluationService = Depends(get_evaluation_service),
 ) -> Response:
-    payload_bytes, media_type, filename = evaluation_service.export_report(db, fmt=format)
+    payload_bytes, media_type, filename = evaluation_service.export_report(db, fmt=format, user_id=user_id)
     return Response(
         content=payload_bytes,
         media_type=media_type,

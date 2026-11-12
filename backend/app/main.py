@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.v1.api import api_router
+from backend.app.api.v1.endpoints import auth as auth_endpoints
 from backend.app.api.v1.endpoints import health, root
 from backend.app.core.config import get_settings
 from backend.app.core.errors import register_exception_handlers
@@ -93,6 +94,9 @@ def create_application() -> FastAPI:
     # Mount top-level health and root endpoints
     app.include_router(root.router, tags=["Root"])
     app.include_router(health.router, tags=["Health"])
+
+    # Mount Authentication endpoints (/api/auth/*)
+    app.include_router(auth_endpoints.router, prefix="/api/auth", tags=["Authentication"])
 
     # Mount versioned API routes (/api/v1)
     app.include_router(api_router, prefix=settings.API_V1_STR)

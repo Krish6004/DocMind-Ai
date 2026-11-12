@@ -104,6 +104,17 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2"
 
+    # MongoDB Atlas & Enterprise Auth (Sprint 7.0)
+    MONGODB_URI: str = ""
+    MONGODB_DB_NAME: str = "docmind_ai"
+    JWT_SECRET: str = "docmind_dev_jwt_secret_change_in_prod"
+    JWT_REFRESH_SECRET: str = "docmind_dev_refresh_secret_change_in_prod"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    COOKIE_SECURE: bool = False
+    COOKIE_SAMESITE: str = "lax"
+    REQUIRE_AUTH: bool = True
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

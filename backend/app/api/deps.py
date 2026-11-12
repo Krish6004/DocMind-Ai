@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Generator
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from backend.app.core.config import Settings, get_settings
@@ -43,6 +44,7 @@ _GLOBAL_PROVIDER_MANAGER: Any | None = None
 _GLOBAL_QUERY_REWRITER: Any | None = None
 _GLOBAL_RETRIEVAL_PLANNER: Any | None = None
 _GLOBAL_EVALUATION_SERVICE: Any | None = None
+_GLOBAL_MONGO_MANAGER: Any | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -251,6 +253,80 @@ def get_evaluation_service(
 
         _GLOBAL_EVALUATION_SERVICE = EvaluationService(settings=settings)
     return _GLOBAL_EVALUATION_SERVICE
+
+
+def get_mongo_manager(
+    settings: Settings = Depends(get_app_settings),
+) -> Any:
+    """Provide singleton MongoManager instance connected to MongoDB Atlas."""
+    global _GLOBAL_MONGO_MANAGER
+    if _GLOBAL_MONGO_MANAGER is None:
+        from backend.app.db.mongo import MongoManager
+
+        _GLOBAL_MONGO_MANAGER = MongoManager(settings=settings)
+    return _GLOBAL_MONGO_MANAGER
+
+
+def get_auth_service(
+    settings: Settings = Depends(get_app_settings),
+    mongo: Any = Depends(get_mongo_manager),
+) -> Any:
+    """Provide AuthService instance backed by MongoDB Atlas."""
+    from backend.app.services.auth_service import AuthService
+
+    return AuthService(mongo=mongo, settings=settings)
+
+
+def get_current_user(
+    request: Request,
+    settings: Settings = Depends(get_app_settings),
+    auth_service: Any = Depends(get_auth_service),
+) -> Any:
+    """
+    JWT verification dependency for protected routes.
+    Reads Bearer token from Authorization header or 'access_token' HttpOnly cookie.
+    """
+    from backend.app.schemas.auth import UserOut
+
+    token: str | None = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    elif request.cookies.get("access_token"):
+        token = request.cookies.get("access_token")
+
+    if not token:
+        if not getattr(settings, "REQUIRE_AUTH", False) or getattr(settings, "ENVIRONMENT", "").lower() in ("test", "testing"):
+            return UserOut(
+                id="default",
+                name="Default User",
+                email="default@docmind.local",
+                is_active=True,
+                created_at=datetime.now(timezone.utc),
+            )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please log in.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    payload = auth_service.verify_access_token(token)
+    user_id = payload["sub"]
+    user = auth_service.get_user_by_id(user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account not found or inactive.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
+def get_current_user_id(
+    current_user: Any = Depends(get_current_user),
+) -> str:
+    """Return authenticated user's ID string."""
+    return str(current_user.id)
 
 
 def get_chat_service(

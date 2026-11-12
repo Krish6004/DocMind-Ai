@@ -7,7 +7,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, UploadFile, status
 from sqlalchemy.orm import Session
 
-from backend.app.api.deps import get_database_session, get_upload_service
+from backend.app.api.deps import get_current_user_id, get_database_session, get_upload_service
 from backend.app.schemas.common import BaseResponse
 from backend.app.schemas.document import UploadResponseData
 from backend.app.services.upload_service import UploadService
@@ -28,13 +28,14 @@ router = APIRouter()
 )
 async def upload_document(
     file: UploadFile = File(..., description="The document file to upload and index"),
+    user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_database_session),
     upload_service: UploadService = Depends(get_upload_service),
 ) -> BaseResponse[UploadResponseData]:
     """
     Handle document upload, chunking, embedding, and indexing.
     """
-    doc_record = await upload_service.process_upload(file=file, db=db)
+    doc_record = await upload_service.process_upload(file=file, db=db, user_id=user_id)
 
     payload = UploadResponseData(
         id=doc_record.id,

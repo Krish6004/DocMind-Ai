@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.api.deps import (
     get_app_settings,
+    get_current_user_id,
     get_database_session,
     get_document_service,
     get_vector_store,
@@ -37,14 +38,15 @@ router = APIRouter()
 def list_documents(
     skip: int = Query(default=0, ge=0, description="Pagination offset"),
     limit: int = Query(default=100, ge=1, le=500, description="Pagination limit"),
+    user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_database_session),
     doc_service: DocumentService = Depends(get_document_service),
 ) -> BaseResponse[DocumentListResponse]:
     """
-    List all documents tracked in the SQLite knowledge base.
+    List all documents tracked in the SQLite knowledge base for the current user.
     """
-    docs = doc_service.list_documents(db=db, skip=skip, limit=limit)
-    total = doc_service.get_document_count(db=db)
+    docs = doc_service.list_documents(db=db, skip=skip, limit=limit, user_id=user_id)
+    total = doc_service.get_document_count(db=db, user_id=user_id)
 
     doc_items = [
         DocumentOut(
@@ -77,13 +79,14 @@ def list_documents(
 )
 def get_document(
     doc_id: str,
+    user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_database_session),
     doc_service: DocumentService = Depends(get_document_service),
 ) -> BaseResponse[DocumentOut]:
     """
     Get a single document's metadata.
     """
-    doc = doc_service.get_document_by_id(db=db, doc_id=doc_id)
+    doc = doc_service.get_document_by_id(db=db, doc_id=doc_id, user_id=user_id)
     if doc is None:
         raise ResourceNotFoundException(
             message=f"Document with ID '{doc_id}' not found.",
@@ -119,6 +122,7 @@ def get_document(
 )
 def delete_document(
     doc_id: str,
+    user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_database_session),
     doc_service: DocumentService = Depends(get_document_service),
     vector_store: VectorStore = Depends(get_vector_store),
@@ -133,6 +137,7 @@ def delete_document(
         doc_id=doc_id,
         vector_store=vector_store,
         store_path=store_path,
+        user_id=user_id,
     )
 
     return BaseResponse(

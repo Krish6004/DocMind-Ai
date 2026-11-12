@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.0] - 2026-11-12
+
+### Added
+- **DocMind AI v2.0 — Sprint 7.0: Enterprise Authentication & Multi-User Isolation:**
+  - **Hybrid Storage Architecture**:
+    - **MongoDB Atlas** (`mongodb+srv://...`): Securely stores User Accounts (`users`), Persistent Multi-Turn Chat Sessions (`chat_sessions`), User Settings (`user_settings`), and Token Rotations (`refresh_tokens`).
+    - **SQLite & NumPy VectorStore**: Preserved strictly for document storage, chunks, BGE embeddings, BM25 indices, and retrieval metadata without modifying the RAG pipeline math.
+  - **Enterprise Authentication (`backend/app/services/auth_service.py` & `endpoints/auth.py`)**:
+    - Implemented bcrypt password hashing (never plaintext).
+    - JWT Access Tokens (30 min) + Refresh Tokens (30 days) with HttpOnly cookie support and Authorization header Bearer parsing.
+    - Endpoints: `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, `POST /api/auth/refresh`, `GET /api/auth/me`.
+  - **Strict Multi-Tenant Isolation**:
+    - Uploads, documents, and chunk metadata tagged with `user_id`.
+    - Every retrieval query strictly scopes search candidates to `user_id`.
+    - Chat history and evaluation telemetry isolated per user.
+  - **Frontend Multi-User UX**:
+    - Added `LoginPage.tsx` and `RegisterPage.tsx` adhering to the Jet Black / Cerulean / Neon Rose design system.
+    - Added `ProtectedRoute.tsx` with automatic session restore and redirection.
+    - Added User Profile Avatar & Menu with Logout in `Navbar.tsx`.
+    - Connected `Sidebar.tsx` and `useChatWorkspace.ts` to MongoDB Atlas chat sessions (`/api/v1/sessions`).
+  - **Tests**:
+    - Added `tests/test_auth_and_isolation.py` (5 tests covering bcrypt, JWT, login/register, document isolation across users, and session isolation).
+    - Total test suite now at **227 passing tests**.
+
+---
+
 ## [1.7.0] - 2026-11-11
 
 ### Added

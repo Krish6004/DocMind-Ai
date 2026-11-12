@@ -8,7 +8,7 @@ import os
 from collections.abc import Generator
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.core.config import get_settings
@@ -50,11 +50,17 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db() -> None:
     """
-    Initialize SQLite database tables.
-    Creates 'documents' and 'chat_history' tables if they don't exist.
+    Initialize SQLite database tables and ensure Sprint 7.0 user_id columns exist.
     """
     logger.info("Initializing SQLite database tables at %s", settings.DATABASE_URL)
     Base.metadata.create_all(bind=engine)
+    if settings.DATABASE_URL.startswith("sqlite"):
+        with engine.begin() as conn:
+            for table in ("documents", "chat_history", "evaluation_history"):
+                cols = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})")).fetchall()}
+                if cols and "user_id" not in cols:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN user_id VARCHAR(64) NOT NULL DEFAULT 'default'"))
+                    conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{table}_user_id ON {table} (user_id)"))
     logger.info("Database tables initialized successfully.")
 
 

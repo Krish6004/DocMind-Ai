@@ -55,6 +55,7 @@ class UploadService:
         self,
         file: UploadFile,
         db: Session,
+        user_id: str = "default",
     ) -> DocumentModel:
         """
         Execute full upload, ingestion, chunking, embedding, vector store update,
@@ -100,8 +101,8 @@ class UploadService:
                 details={"filename": sanitized_filename, "file_size": file_size, "max_size": self.settings.MAX_UPLOAD_SIZE_BYTES},
             )
 
-        # 4. Save to data/uploads
-        upload_dir = self.settings.UPLOAD_DIR
+        # 4. Save to data/uploads (user-scoped directory when authenticated)
+        upload_dir = self.settings.UPLOAD_DIR / user_id if user_id and user_id != "default" else self.settings.UPLOAD_DIR
         upload_dir.mkdir(parents=True, exist_ok=True)
         target_path = upload_dir / sanitized_filename
 
@@ -135,10 +136,13 @@ class UploadService:
         # 7. Call existing embedding pipeline & update vector store
         if chunk_count > 0:
             chunk_texts = [c["text"] for c in chunks]
+            user_file_key = f"{user_id}:{sanitized_filename}"
             chunk_metas = [
                 {
                     "source": str(target_path),
                     "filename": sanitized_filename,
+                    "user_id": user_id,
+                    "user_file_key": user_file_key,
                     "chunk_index": c["chunk_index"],
                     "file_type": doc_metadata.get("file_type", suffix.lstrip(".")),
                     "file_size": file_size,
@@ -150,8 +154,11 @@ class UploadService:
 
             embeddings = self.embedding_model.embed_texts(chunk_texts, show_progress=False)
 
-            # Synchronize VectorStore: Remove prior chunks if replacing an existing file
-            self.vector_store.delete_by_filename(sanitized_filename)
+            # Synchronize VectorStore: Remove prior chunks for this user's file only
+            if user_id and user_id != "default":
+                self.vector_store.delete_by_metadata("user_file_key", user_file_key)
+            else:
+                self.vector_store.delete_by_filename(sanitized_filename)
             self.vector_store.add(embeddings, chunk_texts, chunk_metas)
 
             # Persist VectorStore state to data/store
@@ -166,8 +173,11 @@ class UploadService:
         else:
             logger.warning("Document '%s' produced 0 chunks (empty content after parsing)", sanitized_filename)
 
-        # 8. Save metadata to SQLite
-        existing_doc_stmt = select(DocumentModel).where(DocumentModel.filename == sanitized_filename)
+        # 8. Save metadata to SQLite (scoped by user_id)
+        existing_doc_stmt = select(DocumentModel).where(
+            DocumentModel.filename == sanitized_filename,
+            DocumentModel.user_id == user_id,
+        )
         existing_doc = db.scalar(existing_doc_stmt)
         if existing_doc is not None:
             # Update existing document entry
@@ -186,6 +196,7 @@ class UploadService:
             # Create new document record
             new_doc = DocumentModel(
                 id=uuid.uuid4().hex,
+                user_id=user_id,
                 filename=sanitized_filename,
                 file_type=suffix.lstrip(".") if suffix else doc_metadata.get("file_type", "txt"),
                 file_size=file_size,

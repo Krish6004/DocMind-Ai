@@ -523,6 +523,7 @@ class EvaluationService:
         self,
         db: Session,
         *,
+        user_id: str = "default",
         request_id: str,
         session_id: str,
         query: str,
@@ -622,6 +623,7 @@ class EvaluationService:
 
         orm_row = EvaluationHistoryModel(
             id=record_id,
+            user_id=user_id,
             request_id=request_id,
             session_id=session_id,
             query=query,
@@ -773,16 +775,22 @@ class EvaluationService:
             created_at=row.created_at,
         )
 
-    def get_latest(self, db: Session) -> EvaluationRecord | None:
-        """Fetch most recent evaluation record."""
-        stmt = select(EvaluationHistoryModel).order_by(desc(EvaluationHistoryModel.created_at)).limit(1)
+    def get_latest(self, db: Session, user_id: str = "default") -> EvaluationRecord | None:
+        """Fetch most recent evaluation record for user_id."""
+        stmt = (
+            select(EvaluationHistoryModel)
+            .where(EvaluationHistoryModel.user_id == user_id)
+            .order_by(desc(EvaluationHistoryModel.created_at))
+            .limit(1)
+        )
         row = db.scalars(stmt).first()
         return self._row_to_record(row) if row else None
 
-    def get_history(self, db: Session, limit: int = 100, offset: int = 0) -> EvaluationHistoryListResponse:
-        """Fetch last N (default 100) evaluation records."""
+    def get_history(self, db: Session, limit: int = 100, offset: int = 0, user_id: str = "default") -> EvaluationHistoryListResponse:
+        """Fetch last N (default 100) evaluation records for user_id."""
         stmt = (
             select(EvaluationHistoryModel)
+            .where(EvaluationHistoryModel.user_id == user_id)
             .order_by(desc(EvaluationHistoryModel.created_at))
             .offset(offset)
             .limit(limit)
@@ -791,9 +799,14 @@ class EvaluationService:
         items = [self._row_to_record(r) for r in rows]
         return EvaluationHistoryListResponse(total=len(items), items=items)
 
-    def get_summary(self, db: Session, limit: int = 200) -> EvaluationSummaryResponse:
-        """Aggregate dashboard metrics, trends, provider comparison, and heatmap matrix."""
-        stmt = select(EvaluationHistoryModel).order_by(desc(EvaluationHistoryModel.created_at)).limit(limit)
+    def get_summary(self, db: Session, limit: int = 200, user_id: str = "default") -> EvaluationSummaryResponse:
+        """Aggregate dashboard metrics, trends, provider comparison, and heatmap matrix for user_id."""
+        stmt = (
+            select(EvaluationHistoryModel)
+            .where(EvaluationHistoryModel.user_id == user_id)
+            .order_by(desc(EvaluationHistoryModel.created_at))
+            .limit(limit)
+        )
         rows = list(db.scalars(stmt).all())
         if not rows:
             return EvaluationSummaryResponse()
@@ -921,6 +934,7 @@ class EvaluationService:
         self,
         db: Session,
         *,
+        user_id: str = "default",
         dataset_name: str = "sample_questions.json",
         max_queries: int = 55,
         retriever: Any | None = None,
@@ -941,8 +955,10 @@ class EvaluationService:
         vs = getattr(retriever, "vectorstore", None) if retriever is not None else None
         corpus_docs = {
             source_basename(m)
-            for m in (getattr(vs, "metadata", []) or [])
-            if isinstance(m, dict) and source_basename(m) != "unknown"
+            for m in (getattr(vs, "_metadata", None) or getattr(vs, "metadata", None) or [])
+            if isinstance(m, dict)
+            and source_basename(m) != "unknown"
+            and (user_id == "default" or m.get("user_id") == user_id)
         }
         doc_count = len(corpus_docs)
 
@@ -965,7 +981,8 @@ class EvaluationService:
             retrieved: list[dict[str, Any]] = []
             if retriever is not None and vs is not None and len(vs) > 0:
                 try:
-                    retrieved = retriever.retrieve(q_text, top_k=5)
+                    m_filter = {"user_id": user_id} if (user_id and user_id != "default") else None
+                    retrieved = [] if (user_id != "default" and not corpus_docs) else retriever.retrieve(q_text, top_k=5, metadata_filter=m_filter)
                 except Exception:
                     retrieved = []
             ret_ms = (time.perf_counter() - t_ret) * 1000
@@ -1035,6 +1052,7 @@ class EvaluationService:
 
             rec = self.evaluate_and_persist(
                 db=db,
+                user_id=user_id,
                 request_id=f"{run_id}_{item.get('id', uuid.uuid4().hex[:6])}",
                 session_id=run_id,
                 query=q_text,
@@ -1122,13 +1140,14 @@ class EvaluationService:
         self,
         db: Session,
         fmt: str = "json",
+        user_id: str = "default",
     ) -> tuple[bytes, str, str]:
         """
         Generate downloadable evaluation report in CSV, JSON, or PDF format.
         Returns (payload_bytes, media_type, filename).
         """
-        summary = self.get_summary(db)
-        history = self.get_history(db, limit=100).items
+        summary = self.get_summary(db, user_id=user_id)
+        history = self.get_history(db, limit=100, user_id=user_id).items
         timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         fmt_lower = fmt.lower().strip()
 

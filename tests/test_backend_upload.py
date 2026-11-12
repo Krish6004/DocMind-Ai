@@ -75,6 +75,7 @@ def test_env():
         DATA_DIR=temp_dir,
         UPLOAD_DIR=upload_dir,
         STORE_DIR=store_dir,
+        REQUIRE_AUTH=False,
     )
 
     test_vector_store = VectorStore()

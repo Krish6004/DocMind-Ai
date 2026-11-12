@@ -69,6 +69,7 @@ class ChatService:
         self,
         request: ChatRequest,
         db: Session,
+        user_id: str = "default",
     ) -> ChatResponseData:
         """
         Execute RAG query pipeline with memory, reranking, generation, and persistence.
@@ -102,15 +103,7 @@ class ChatService:
         t_mem_0 = time.perf_counter()
         history_turns: list[ChatHistoryModel] = []
         if request.use_memory:
-            stmt = (
-                select(ChatHistoryModel)
-                .where(ChatHistoryModel.session_id == session_id)
-                .order_by(ChatHistoryModel.created_at.desc())
-                .limit(request.memory_window)
-            )
-            # Fetch in descending order, then reverse to chronological order (oldest -> newest)
-            descending_turns = list(db.scalars(stmt).all())
-            history_turns = list(reversed(descending_turns))
+            history_turns = self._load_session_history(db, session_id, request.memory_window, user_id=user_id)
             logger.debug("Loaded %d previous conversation turns for memory context", len(history_turns))
         memory_retrieval_ms = (time.perf_counter() - t_mem_0) * 1000
 
@@ -168,7 +161,7 @@ class ChatService:
         plan = None
 
         vs = getattr(self.hybrid_retriever, "vectorstore", None) if self.hybrid_retriever is not None else None
-        available_filenames = self._get_available_filenames(vs)
+        available_filenames = self._get_available_filenames(vs, user_id=user_id)
 
         if self.retrieval_planner is not None:
             try:
@@ -184,7 +177,7 @@ class ChatService:
 
                 # Ensure conversation memory is loaded when planner detects follow-up
                 if plan.needs_memory and not history_turns and not request.use_memory:
-                    history_turns = self._load_session_history(db, session_id, request.memory_window)
+                    history_turns = self._load_session_history(db, session_id, request.memory_window, user_id=user_id)
 
                 planner_telemetry = RetrievalPlannerTelemetry(
                     query_type=plan.query_type,
@@ -226,6 +219,7 @@ class ChatService:
                         plan=plan,
                         available_filenames=available_filenames,
                         vs=vs,
+                        user_id=user_id,
                     )
                 except Exception as exc:
                     logger.warning("Hybrid retrieval encountered an error: %s", exc)
@@ -386,6 +380,7 @@ class ChatService:
             sources_payload = [s.model_dump() for s in sources_list]
             chat_record = ChatHistoryModel(
                 id=request_id,
+                user_id=user_id,
                 session_id=session_id,
                 query=clean_query,
                 answer=answer,
@@ -417,6 +412,7 @@ class ChatService:
 
         # Read-only observation snapshot for async EvaluationService
         self.last_observation = {
+            "user_id": user_id,
             "request_id": request_id,
             "session_id": session_id,
             "query": clean_query,
@@ -454,13 +450,17 @@ class ChatService:
         db: Session,
         session_id: str,
         limit: int = 50,
+        user_id: str = "default",
     ) -> ChatHistoryResponse:
         """
-        Retrieve chronological chat history for a session.
+        Retrieve chronological chat history for a session scoped to user_id.
         """
         stmt = (
             select(ChatHistoryModel)
-            .where(ChatHistoryModel.session_id == session_id)
+            .where(
+                ChatHistoryModel.session_id == session_id,
+                ChatHistoryModel.user_id == user_id,
+            )
             .order_by(ChatHistoryModel.created_at.asc())
             .limit(limit)
         )
@@ -503,27 +503,35 @@ class ChatService:
         db: Session,
         session_id: str,
         memory_window: int,
+        user_id: str = "default",
     ) -> list[ChatHistoryModel]:
-        """Load recent conversation turns in chronological order."""
+        """Load recent conversation turns in chronological order scoped to user_id."""
         stmt = (
             select(ChatHistoryModel)
-            .where(ChatHistoryModel.session_id == session_id)
+            .where(
+                ChatHistoryModel.session_id == session_id,
+                ChatHistoryModel.user_id == user_id,
+            )
             .order_by(ChatHistoryModel.created_at.desc())
             .limit(memory_window)
         )
         return list(reversed(list(db.scalars(stmt).all())))
 
-    def _get_available_filenames(self, vectorstore: Any | None) -> list[str]:
-        """Extract unique indexed filenames from VectorStore metadata."""
+    def _get_available_filenames(self, vectorstore: Any | None, user_id: str = "default") -> list[str]:
+        """Extract unique indexed filenames from VectorStore metadata scoped to user_id."""
         if vectorstore is None:
             return []
-        metadata_list = getattr(vectorstore, "metadata", None)
+        metadata_list = getattr(vectorstore, "_metadata", None) or getattr(vectorstore, "metadata", None)
         if not metadata_list:
             return []
         seen: list[str] = []
         seen_set: set[str] = set()
         for meta in metadata_list:
-            fname = source_basename(meta) if isinstance(meta, dict) else None
+            if not isinstance(meta, dict):
+                continue
+            if user_id and user_id != "default" and meta.get("user_id") != user_id:
+                continue
+            fname = source_basename(meta)
             if fname and fname != "unknown" and fname not in seen_set:
                 seen_set.add(fname)
                 seen.append(fname)
@@ -560,13 +568,22 @@ class ChatService:
         plan: Any | None,
         available_filenames: list[str],
         vs: Any | None,
+        user_id: str = "default",
     ) -> list[dict[str, Any]]:
         """Execute HybridRetriever calls orchestrated by the Adaptive Retrieval Planner."""
+        base_filter: dict[str, Any] = dict(explicit_filters or {})
+        if user_id and user_id != "default":
+            if not available_filenames:
+                return []
+            base_filter["user_id"] = user_id
+
+        effective_filter = base_filter if base_filter else None
+
         if explicit_filters is not None or plan is None:
             return self.hybrid_retriever.retrieve(
                 query,
                 top_k=top_k,
-                metadata_filter=explicit_filters,
+                metadata_filter=effective_filter,
             )
 
         # Multi-document orchestration: ensure coverage from every uploaded document
@@ -574,29 +591,40 @@ class ChatService:
             per_doc_k = max(2, top_k // len(available_filenames))
             doc_chunks: list[dict[str, Any]] = []
             for fname in available_filenames[:10]:
+                doc_filter = {**base_filter, "filename": fname}
                 subset = self.hybrid_retriever.retrieve(
                     query,
                     top_k=per_doc_k,
-                    metadata_filter={"filename": fname},
+                    metadata_filter=doc_filter,
                 )
                 doc_chunks.extend(subset)
-            global_chunks = self.hybrid_retriever.retrieve(query, top_k=top_k)
+            global_chunks = self.hybrid_retriever.retrieve(
+                query,
+                top_k=top_k,
+                metadata_filter=effective_filter,
+            )
             return self._merge_unique_chunks(doc_chunks, global_chunks, limit=top_k)
 
         # Code strategy orchestration: prioritize markdown/code chunks without losing general matches
         if plan.query_type == "code":
             md_chunks: list[dict[str, Any]] = []
             has_md = any(
-                isinstance(m, dict) and str(m.get("file_type", "")).lower() == "md"
-                for m in (getattr(vs, "metadata", []) or [])
+                isinstance(m, dict)
+                and str(m.get("file_type", "")).lower() == "md"
+                and (user_id == "default" or m.get("user_id") == user_id)
+                for m in (getattr(vs, "_metadata", None) or getattr(vs, "metadata", None) or [])
             )
             if has_md:
                 md_chunks = self.hybrid_retriever.retrieve(
                     query,
                     top_k=top_k,
-                    metadata_filter={"file_type": "md"},
+                    metadata_filter={**base_filter, "file_type": "md"},
                 )
-            general_chunks = self.hybrid_retriever.retrieve(query, top_k=top_k)
+            general_chunks = self.hybrid_retriever.retrieve(
+                query,
+                top_k=top_k,
+                metadata_filter=effective_filter,
+            )
             code_like = [
                 c for c in general_chunks
                 if "```" in c.get("text", "") or "def " in c.get("text", "") or "class " in c.get("text", "")
@@ -606,7 +634,7 @@ class ChatService:
         return self.hybrid_retriever.retrieve(
             query,
             top_k=top_k,
-            metadata_filter=explicit_filters,
+            metadata_filter=effective_filter,
         )
 
     def _build_prompt_with_history(

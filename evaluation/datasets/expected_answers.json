@@ -1,0 +1,16 @@
+{
+  "version": "1.7.0",
+  "answers": [
+    {"id": "q01", "expected_answer": "Retrieval-Augmented Generation combines dense vector retrieval and sparse keyword search to fetch relevant document context passed to an LLM for grounded answer generation."},
+    {"id": "q02", "expected_answer": "DocMind AI combines dense semantic embeddings with BM25 sparse lexical search and unifies both ranked lists via Reciprocal Rank Fusion (RRF)."},
+    {"id": "q03", "expected_answer": "Reciprocal Rank Fusion uses a smoothing constant of k=60."},
+    {"id": "q04", "expected_answer": "DocMind AI uses BAAI/bge-small-en-v1.5 producing 384-dimensional dense embeddings."},
+    {"id": "q05", "expected_answer": "The Cross-Encoder (ms-marco-MiniLM-L-6-v2) evaluates token-level query-chunk interactions to rerank top candidate chunks."},
+    {"id": "q06", "expected_answer": "DocMind AI prioritizes Google Gemini as the default LLM provider and automatically falls back to Groq LPU inference on error."},
+    {"id": "q07", "expected_answer": "Russell and Norvig define AI around intelligent agents that perceive their environment, learn from experience, and act to maximize a performance measure."},
+    {"id": "q08", "expected_answer": "Machine Learning enables computer programs to improve performance at a task through experience."},
+    {"id": "q09", "expected_answer": "A computer program learns from experience E with respect to task T and performance measure P if its performance at T measured by P improves with E."},
+    {"id": "q10", "expected_answer": "Traditional ML relies on human-designed features, whereas Deep Learning learns hierarchical features and mappings directly from raw data."}
+  ]
+}
+

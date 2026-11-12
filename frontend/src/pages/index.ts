@@ -1,0 +1,6 @@
+export * from './DashboardPage'
+export * from './ChatPage'
+export * from './DocumentsPage'
+export * from './AnalyticsPage'
+export * from './EvaluationPage'
+export * from './SettingsPage'

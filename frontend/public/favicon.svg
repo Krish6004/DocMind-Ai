@@ -1,0 +1,24 @@
+<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="32" height="32" rx="9" fill="#0A0A0A"/>
+  <rect width="32" height="32" rx="9" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+  <path d="M16 3.5L27 9.8V22.2L16 28.5L5 22.2V9.8L16 3.5Z" stroke="rgba(255,255,255,0.2)" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M16 3.5L27 9.8L16 16L5 9.8L16 3.5Z" fill="url(#p-top)" stroke="#189FD2" stroke-width="0.8"/>
+  <path d="M16 16V28.5L5 22.2V9.8L16 16Z" fill="url(#p-left)" stroke="rgba(0,123,167,0.5)" stroke-width="0.8"/>
+  <path d="M16 16L27 9.8V22.2L16 28.5V16Z" fill="url(#p-right)" stroke="rgba(255,45,149,0.5)" stroke-width="0.8"/>
+  <circle cx="16" cy="16" r="2.2" fill="#FF2D95"/>
+  <defs>
+    <linearGradient id="p-top" x1="5" y1="3.5" x2="27" y2="16" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#007BA7"/>
+      <stop offset="0.6" stop-color="#189FD2"/>
+      <stop offset="1" stop-color="#FF2D95" stop-opacity="0.5"/>
+    </linearGradient>
+    <linearGradient id="p-left" x1="5" y1="9.8" x2="16" y2="28.5" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A0A0A"/>
+      <stop offset="1" stop-color="#007BA7" stop-opacity="0.5"/>
+    </linearGradient>
+    <linearGradient id="p-right" x1="27" y1="9.8" x2="16" y2="28.5" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#141418"/>
+      <stop offset="1" stop-color="#FF2D95" stop-opacity="0.4"/>
+    </linearGradient>
+  </defs>
+</svg>

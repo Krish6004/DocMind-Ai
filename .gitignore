@@ -1,0 +1,30 @@
+# Environment & Secrets
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+npm-debug.log*
+
+# Runtime Data & SQLite
+data/docmind.db
+data/uploads/
+data/store/
+data/benchmark_results.json
+data/test_cases.json
+
+# OS / IDE
+.DS_Store
+Thumbs.db

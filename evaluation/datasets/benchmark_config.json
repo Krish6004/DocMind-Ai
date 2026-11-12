@@ -1,0 +1,12 @@
+{
+  "version": "1.7.0",
+  "benchmark_name": "DocMind AI Enterprise RAG Benchmark",
+  "default_dataset": "sample_questions.json",
+  "default_top_k": 5,
+  "min_precision_threshold": 0.4,
+  "min_grounding_threshold": 60.0,
+  "max_hallucination_risk_threshold": 35.0,
+  "max_latency_ms": 3000.0,
+  "eval_overhead_budget_ms": 15.0
+}
+

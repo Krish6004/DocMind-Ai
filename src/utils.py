@@ -36,7 +36,6 @@ def detect_device() -> str:
         try:
             # Set torch threads to 1 to strictly bound thread stack allocations in 512MB RAM
             torch.set_num_threads(1)
-            torch.set_num_interop_threads(1)
         except Exception:
             pass
 

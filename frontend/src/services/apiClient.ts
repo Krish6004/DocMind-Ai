@@ -19,7 +19,6 @@ export const apiClient: AxiosInstance = axios.create({
   timeout: 90000,
   withCredentials: true,
   headers: {
-    'Content-Type': 'application/json',
     'Accept': 'application/json',
   },
 })
@@ -98,7 +97,9 @@ apiClient.interceptors.response.use(
     let errorMessage = 'An unexpected error occurred while communicating with the server.'
     if (error.response?.data) {
       const data = error.response.data as any
-      if (typeof data.detail === 'string') {
+      if (data.error?.message) {
+        errorMessage = data.error.message
+      } else if (typeof data.detail === 'string') {
         errorMessage = data.detail
       } else if (Array.isArray(data.detail)) {
         errorMessage = data.detail.map((err: any) => err.msg || JSON.stringify(err)).join(', ')
@@ -110,6 +111,8 @@ apiClient.interceptors.response.use(
       (error.message && error.message.toLowerCase().includes('timeout'))
     ) {
       errorMessage = 'Request timed out waiting for server response. The server may still be processing heavy AI embeddings or starting up. Please check back shortly.'
+    } else if (error.message === 'Network Error') {
+      errorMessage = 'Network connection failed. The backend server on Render may be waking up from sleep or restarting. Please wait 15-30 seconds and retry.'
     } else if (error.message) {
       errorMessage = error.message
     }

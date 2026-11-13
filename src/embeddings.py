@@ -63,8 +63,8 @@ class EmbeddingModel:
 
         import gc
 
-        # On CPU, keep batch size very small to prevent tensor memory spikes
-        effective_batch_size = 4 if self.device == "cpu" else batch_size
+        # On CPU, keep batch size small (8) for speed without tensor memory spikes
+        effective_batch_size = 8 if self.device == "cpu" else batch_size
         all_embeddings: list[np.ndarray] = []
 
         batches = [texts[i : i + effective_batch_size] for i in range(0, len(texts), effective_batch_size)]
@@ -96,8 +96,9 @@ class EmbeddingModel:
                 all_embeddings.append(pooled.cpu().float().numpy())
 
             del encoded, output, pooled
-            if self.device == "cpu":
-                gc.collect()
+
+        if self.device == "cpu":
+            gc.collect()
 
         embeddings = np.concatenate(all_embeddings, axis=0)
         return self._l2_normalize(embeddings)

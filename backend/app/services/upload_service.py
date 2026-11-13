@@ -169,8 +169,8 @@ class UploadService:
             for c in chunks
         ]
 
-        # Use batch_size 4 on CPU to guarantee memory remains strictly under 512MB RAM
-        embeddings = await asyncio.to_thread(self.embedding_model.embed_texts, chunk_texts, 4, False)
+        # Use batch_size 8 on CPU to guarantee fast processing while keeping memory strictly under 512MB RAM
+        embeddings = await asyncio.to_thread(self.embedding_model.embed_texts, chunk_texts, 8, False)
 
         import gc
         gc.collect()

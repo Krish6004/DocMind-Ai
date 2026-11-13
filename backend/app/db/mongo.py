@@ -93,3 +93,4 @@ class MongoManager:
         """Verify MongoDB Atlas connectivity."""
         self.client.admin.command("ping")
         return True
+

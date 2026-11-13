@@ -166,3 +166,4 @@ def update_user_settings(
         message="User settings saved.",
         data=auth_service.update_user_settings(user_id, payload),
     )
+

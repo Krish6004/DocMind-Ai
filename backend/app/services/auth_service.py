@@ -469,3 +469,4 @@ class AuthService:
             "conversation_id": conversation_id,
         })
         return res.deleted_count > 0
+

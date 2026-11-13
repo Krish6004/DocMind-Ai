@@ -1,6 +1,15 @@
 import axios, { type AxiosError, type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+const RAW_URL = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '').trim()
+const CLEAN_URL = RAW_URL.replace(/\/+$/, '')
+
+export const API_BASE_URL = CLEAN_URL
+  ? (CLEAN_URL.endsWith('/api/v1') ? CLEAN_URL : `${CLEAN_URL}/api/v1`)
+  : '/api/v1'
+
+export const AUTH_BASE_URL = CLEAN_URL
+  ? (CLEAN_URL.endsWith('/api/v1') ? `${CLEAN_URL.slice(0, -7)}/api/auth` : `${CLEAN_URL}/api/auth`)
+  : '/api/auth'
 
 export const ACCESS_TOKEN_KEY = 'docmind_access_token'
 export const REFRESH_TOKEN_KEY = 'docmind_refresh_token'
@@ -59,7 +68,7 @@ apiClient.interceptors.response.use(
         isRefreshing = true
         try {
           const res = await axios.post(
-            '/api/auth/refresh',
+            `${AUTH_BASE_URL}/refresh`,
             { refresh_token: refreshToken },
             { withCredentials: true }
           )

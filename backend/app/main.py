@@ -78,10 +78,28 @@ def create_application() -> FastAPI:
     )
 
     # Configure CORS middleware
-    if settings.CORS_ORIGINS:
+    allow_origins = settings.CORS_ORIGINS
+    # Starlette CORSMiddleware rejects allow_origins=["*"] when allow_credentials=True.
+    # To support Vercel preview & production URLs, Render, localhost, and custom domains safely:
+    if "*" in allow_origins:
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=settings.CORS_ORIGINS,
+            allow_origins=[
+                "http://localhost:5173",
+                "http://localhost:3000",
+                "http://127.0.0.1:5173",
+                "http://127.0.0.1:3000",
+            ],
+            allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|.*\.vercel\.app|.*\.onrender\.com)(:\d+)?$",
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        logger.debug("CORS middleware initialized with regex for Vercel/Render/localhost")
+    else:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=allow_origins,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],

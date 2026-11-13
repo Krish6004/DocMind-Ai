@@ -36,3 +36,4 @@ export interface MongoChatSession {
   updated_at: string
   messages?: any[]
 }
+

@@ -76,3 +76,4 @@ class ChatSessionCreateRequest(BaseModel):
 class ChatSessionUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=120)
     is_pinned: bool | None = None
+

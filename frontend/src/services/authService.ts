@@ -1,4 +1,4 @@
-import apiClient, { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY } from './apiClient'
+import apiClient, { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, AUTH_BASE_URL } from './apiClient'
 import type {
   ApiResponse,
   AuthTokenResponse,
@@ -10,9 +10,9 @@ import type {
 export const authService = {
   async register(name: string, email: string, password: string): Promise<AuthTokenResponse> {
     const res = await apiClient.post<ApiResponse<AuthTokenResponse>>(
-      '/auth/register',
+      `${AUTH_BASE_URL}/register`,
       { name, email, password },
-      { baseURL: '/api' }
+      { baseURL: '' }
     )
     const data = res.data.data
     localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token)
@@ -22,9 +22,9 @@ export const authService = {
 
   async login(email: string, password: string): Promise<AuthTokenResponse> {
     const res = await apiClient.post<ApiResponse<AuthTokenResponse>>(
-      '/auth/login',
+      `${AUTH_BASE_URL}/login`,
       { email, password },
-      { baseURL: '/api' }
+      { baseURL: '' }
     )
     const data = res.data.data
     localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token)
@@ -36,9 +36,9 @@ export const authService = {
     const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
     try {
       await apiClient.post(
-        '/auth/logout',
+        `${AUTH_BASE_URL}/logout`,
         { refresh_token: refreshToken },
-        { baseURL: '/api' }
+        { baseURL: '' }
       )
     } catch {
       // ignore server errors during local logout
@@ -49,7 +49,7 @@ export const authService = {
   },
 
   async getMe(): Promise<AuthUser> {
-    const res = await apiClient.get<ApiResponse<AuthUser>>('/auth/me', { baseURL: '/api' })
+    const res = await apiClient.get<ApiResponse<AuthUser>>(`${AUTH_BASE_URL}/me`, { baseURL: '' })
     return res.data.data
   },
 
@@ -100,3 +100,4 @@ export const authService = {
 }
 
 export default authService
+

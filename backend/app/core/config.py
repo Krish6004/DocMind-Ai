@@ -40,15 +40,24 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     # CORS configuration
-    CORS_ORIGINS: list[str] = ["*"]
+    CORS_ORIGINS: Any = ["*"]
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Any) -> list[str]:
-        if isinstance(v, str) and not v.startswith("["):
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    import json
+                    parsed = json.loads(v)
+                    if isinstance(parsed, list):
+                        return [str(x).strip() for x in parsed if str(x).strip()]
+                except Exception:
+                    pass
             return [i.strip() for i in v.split(",") if i.strip()]
         elif isinstance(v, (list, tuple)):
-            return list(v)
+            return [str(x).strip() for x in v if str(x).strip()]
         return ["*"]
 
     # Storage paths
@@ -60,13 +69,40 @@ class Settings(BaseSettings):
 
     # Upload validation constraints
     MAX_UPLOAD_SIZE_BYTES: int = 50 * 1024 * 1024  # 50 MB
-    ALLOWED_EXTENSIONS: set[str] = {".pdf", ".docx", ".txt", ".md"}
+    ALLOWED_EXTENSIONS: Any = {".pdf", ".docx", ".txt", ".md"}
+
+    @field_validator("ALLOWED_EXTENSIONS", mode="before")
+    @classmethod
+    def assemble_allowed_extensions(cls, v: Any) -> set[str]:
+        if isinstance(v, str):
+            return {i.strip() for i in v.split(",") if i.strip()}
+        elif isinstance(v, (set, list, tuple)):
+            return {str(x).strip() for x in v if str(x).strip()}
+        return {".pdf", ".docx", ".txt", ".md"}
 
     # Active LLM Provider & Priority
     DEFAULT_PROVIDER: str = "gemini"
     DEFAULT_LLM_PROVIDER: str = "gemini"
     DEFAULT_MODEL: str = "gemini-2.5-flash"
-    PROVIDER_PRIORITY: list[str] = ["gemini", "groq"]
+    PROVIDER_PRIORITY: Any = ["gemini", "groq"]
+
+    @field_validator("PROVIDER_PRIORITY", mode="before")
+    @classmethod
+    def assemble_provider_priority(cls, v: Any) -> list[str]:
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    import json
+                    parsed = json.loads(v)
+                    if isinstance(parsed, list):
+                        return [str(x).strip() for x in parsed if str(x).strip()]
+                except Exception:
+                    pass
+            return [i.strip() for i in v.split(",") if i.strip()]
+        elif isinstance(v, (list, tuple)):
+            return [str(x).strip() for x in v if str(x).strip()]
+        return ["gemini", "groq"]
 
     # Retrieval & Model Configuration
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"

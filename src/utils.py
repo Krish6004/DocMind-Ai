@@ -24,6 +24,7 @@ def detect_device() -> str:
     Returns:
         "cuda", "mps", or "cpu".
     """
+    import os
     import torch
 
     if torch.cuda.is_available():
@@ -32,6 +33,11 @@ def detect_device() -> str:
         device = "mps"
     else:
         device = "cpu"
+        try:
+            # Optimize CPU threads for containers and shared CPU instances to prevent thread thrashing
+            torch.set_num_threads(min(4, os.cpu_count() or 1))
+        except Exception:
+            pass
 
     logger.debug("Detected optimal computation device: %s", device)
     return device

@@ -4,6 +4,7 @@ UploadService for validating, saving, and ingesting documents into DocMind AI.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 import uuid
@@ -114,9 +115,9 @@ class UploadService:
             logger.exception("Failed to write uploaded file to disk: %s", exc)
             raise ValidationException(f"Failed to save file to server storage: {exc}") from exc
 
-        # 5. Call existing ingestion pipeline
+        # 5. Call existing ingestion pipeline (offloaded to threadpool)
         try:
-            doc = load_document(str(target_path))
+            doc = await asyncio.to_thread(load_document, str(target_path))
             doc_text = doc.get("text", "")
             doc_metadata = doc.get("metadata", {})
         except Exception as exc:
@@ -128,8 +129,8 @@ class UploadService:
                 details={"filename": sanitized_filename, "error": str(exc)},
             ) from exc
 
-        # 6. Call existing chunker
-        chunks = self.chunker.split_text(doc_text)
+        # 6. Call existing chunker (offloaded to threadpool)
+        chunks = await asyncio.to_thread(self.chunker.split_text, doc_text)
         chunk_count = len(chunks)
         logger.info("Generated %d chunks for document '%s'", chunk_count, sanitized_filename)
 
@@ -152,7 +153,7 @@ class UploadService:
                 for c in chunks
             ]
 
-            embeddings = self.embedding_model.embed_texts(chunk_texts, show_progress=False)
+            embeddings = await asyncio.to_thread(self.embedding_model.embed_texts, chunk_texts, 32, False)
 
             # Synchronize VectorStore: Remove prior chunks for this user's file only
             if user_id and user_id != "default":
@@ -166,7 +167,7 @@ class UploadService:
             store_dir.mkdir(parents=True, exist_ok=True)
             store_path = store_dir / "vector_store"
             try:
-                self.vector_store.save(str(store_path))
+                await asyncio.to_thread(self.vector_store.save, str(store_path))
                 logger.info("Persisted VectorStore (%d chunks) to '%s'", len(self.vector_store), store_path)
             except Exception as exc:
                 logger.warning("Failed to persist VectorStore to disk: %s", exc)

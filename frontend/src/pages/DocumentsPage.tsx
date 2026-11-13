@@ -36,6 +36,8 @@ export const DocumentsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedFormat, setSelectedFormat] = useState<string>('all')
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState<string>('')
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -58,16 +60,27 @@ export const DocumentsPage: React.FC = () => {
 
     const file = files[0]
     setIsUploading(true)
+    setUploadProgress(0)
+    setUploadStatus('Uploading file...')
 
     try {
-      const res = await DocumentService.uploadDocument(file)
+      const res = await DocumentService.uploadDocument(file, (percent) => {
+        setUploadProgress(percent)
+        if (percent >= 100) {
+          setUploadStatus('Extracting text & computing vector embeddings...')
+        } else {
+          setUploadStatus(`Uploading: ${percent}%`)
+        }
+      })
       success('Document Indexed', `${res.filename} was successfully processed and chunked.`)
       queryClient.invalidateQueries({ queryKey: ['documents-list'] })
       queryClient.invalidateQueries({ queryKey: ['backend-health'] })
     } catch (err: any) {
-      toastError('Upload Failed', err.message || 'Error parsing document.')
+      toastError('Upload Failed', err.message || 'Error processing document.')
     } finally {
       setIsUploading(false)
+      setUploadProgress(null)
+      setUploadStatus('')
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
@@ -118,7 +131,7 @@ export const DocumentsPage: React.FC = () => {
           onClick={() => fileInputRef.current?.click()}
           className="shadow-glow-cerulean/30"
         >
-          {isUploading ? 'Ingesting Document...' : 'Upload Document'}
+          {isUploading ? (uploadStatus || 'Ingesting Document...') : 'Upload Document'}
         </Button>
       </div>
 
@@ -128,24 +141,52 @@ export const DocumentsPage: React.FC = () => {
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault()
-          if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          if (!isUploading && e.dataTransfer.files && e.dataTransfer.files[0]) {
             const fakeEvent = {
               target: { files: e.dataTransfer.files },
             } as unknown as React.ChangeEvent<HTMLInputElement>
             handleFileUpload(fakeEvent)
           }
         }}
-        className="rounded-2xl glass-panel p-6 border border-dashed border-white/15 hover:border-cerulean/50 transition-all text-center cursor-pointer group bg-jet-950/40"
+        className={`rounded-2xl glass-panel p-6 border border-dashed transition-all text-center group bg-jet-950/40 ${
+          isUploading
+            ? 'border-cerulean/50 cursor-wait'
+            : 'border-white/15 hover:border-cerulean/50 cursor-pointer'
+        }`}
       >
-        <div className="w-12 h-12 rounded-2xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center mx-auto mb-3 text-cerulean-light group-hover:scale-105 transition-transform">
-          <UploadCloud className="w-6 h-6" />
-        </div>
-        <h3 className="text-sm font-semibold text-white">
-          Drop documents here, or <span className="text-cerulean-light underline underline-offset-2">browse files</span>
-        </h3>
-        <p className="text-xs text-jet-400 mt-1">
-          Supports PDF, DOCX, TXT, and Markdown files up to 50 MB.
-        </p>
+        {isUploading ? (
+          <div className="py-2">
+            <Loader2 className="w-8 h-8 animate-spin text-cerulean-light mx-auto mb-3" />
+            <h3 className="text-sm font-semibold text-white">
+              {uploadStatus || 'Processing document...'}
+            </h3>
+            {uploadProgress !== null && uploadProgress > 0 && uploadProgress < 100 && (
+              <div className="w-64 max-w-full mx-auto mt-3">
+                <div className="w-full bg-jet-800 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-cerulean h-full transition-all duration-300"
+                    style={{ width: `${Math.min(uploadProgress, 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            <p className="text-xs text-jet-400 mt-2">
+              Generating semantic chunks and vector embeddings. Please wait...
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="w-12 h-12 rounded-2xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center mx-auto mb-3 text-cerulean-light group-hover:scale-105 transition-transform">
+              <UploadCloud className="w-6 h-6" />
+            </div>
+            <h3 className="text-sm font-semibold text-white">
+              Drop documents here, or <span className="text-cerulean-light underline underline-offset-2">browse files</span>
+            </h3>
+            <p className="text-xs text-jet-400 mt-1">
+              Supports PDF, DOCX, TXT, and Markdown files up to 50 MB.
+            </p>
+          </>
+        )}
       </div>
 
       {/* Controls: Search & Filter Tabs */}

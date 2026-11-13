@@ -11,7 +11,9 @@ export class ChatService {
    * Execute Hybrid Retrieval + Reranking + LLM Generation query.
    */
   public static async sendMessage(payload: ChatRequest): Promise<ChatResponseData> {
-    const response = await apiClient.post<ApiResponse<ChatResponseData>>('/chat', payload)
+    const response = await apiClient.post<ApiResponse<ChatResponseData>>('/chat', payload, {
+      timeout: 120000, // 2 minutes timeout for retrieval + reranking + generation
+    })
     return response.data.data
   }
 

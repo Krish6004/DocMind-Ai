@@ -55,6 +55,23 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Failed to initialize database tables: %s", exc)
 
+    # Pre-warm AI models (VectorStore & Hugging Face EmbeddingModel) in background
+    # so first upload/chat doesn't stall downloading weights on user requests
+    import asyncio
+
+    async def _prewarm_ai_models() -> None:
+        try:
+            logger.info("Background pre-warming: initializing VectorStore and EmbeddingModel...")
+            from backend.app.api.deps import get_embedding_model, get_vector_store
+
+            await asyncio.to_thread(get_vector_store, settings)
+            await asyncio.to_thread(get_embedding_model)
+            logger.info("AI models pre-warmed successfully; ready for document ingestion.")
+        except Exception as exc:
+            logger.warning("Could not pre-warm AI models at startup: %s", exc)
+
+    asyncio.create_task(_prewarm_ai_models())
+
     yield
 
     # --- Shutdown Event ---

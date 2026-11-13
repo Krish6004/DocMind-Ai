@@ -16,7 +16,7 @@ export const REFRESH_TOKEN_KEY = 'docmind_refresh_token'
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 90000,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -105,6 +105,11 @@ apiClient.interceptors.response.use(
       } else if (data.message) {
         errorMessage = data.message
       }
+    } else if (
+      error.code === 'ECONNABORTED' ||
+      (error.message && error.message.toLowerCase().includes('timeout'))
+    ) {
+      errorMessage = 'Request timed out waiting for server response. The server may still be processing heavy AI embeddings or starting up. Please check back shortly.'
     } else if (error.message) {
       errorMessage = error.message
     }

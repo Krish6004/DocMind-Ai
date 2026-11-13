@@ -34,8 +34,9 @@ def detect_device() -> str:
     else:
         device = "cpu"
         try:
-            # Optimize CPU threads for containers and shared CPU instances to prevent thread thrashing
-            torch.set_num_threads(min(4, os.cpu_count() or 1))
+            # Set torch threads to 1 to strictly bound thread stack allocations in 512MB RAM
+            torch.set_num_threads(1)
+            torch.set_num_interop_threads(1)
         except Exception:
             pass
 
@@ -69,7 +70,10 @@ def load_hf_model(
     device = device or detect_device()
     logger.debug("Loading Hugging Face model '%s' on device '%s'", model_name, device)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = model_class.from_pretrained(model_name)
+    try:
+        model = model_class.from_pretrained(model_name, low_cpu_mem_usage=True)
+    except Exception:
+        model = model_class.from_pretrained(model_name)
     model.eval()
     model.to(device)
     return tokenizer, model, device

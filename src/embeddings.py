@@ -48,11 +48,12 @@ class EmbeddingModel:
     def embed_texts(
         self,
         texts: list[str],
-        batch_size: int = 32,
+        batch_size: int = 8,
         show_progress: bool = False,
     ) -> np.ndarray:
         """
         Embed a list of strings in batches.
+        Optimized for memory efficiency in constrained hosting environments (e.g. 512MB RAM).
 
         Returns:
             np.ndarray of shape (N, 384), float32, L2-normalized.
@@ -60,9 +61,13 @@ class EmbeddingModel:
         if not texts:
             return np.empty((0, self.EMBEDDING_DIM), dtype=np.float32)
 
+        import gc
+
+        # On CPU, keep batch size very small to prevent tensor memory spikes
+        effective_batch_size = 4 if self.device == "cpu" else batch_size
         all_embeddings: list[np.ndarray] = []
 
-        batches = [texts[i : i + batch_size] for i in range(0, len(texts), batch_size)]
+        batches = [texts[i : i + effective_batch_size] for i in range(0, len(texts), effective_batch_size)]
 
         if show_progress:
             try:
@@ -82,14 +87,17 @@ class EmbeddingModel:
             )
             encoded = move_to_device(encoded, self.device)
 
-            with torch.no_grad():
+            with torch.inference_mode():
                 output = self.model(**encoded)
+                pooled = self._mean_pool(
+                    output.last_hidden_state,
+                    encoded["attention_mask"],
+                )
+                all_embeddings.append(pooled.cpu().float().numpy())
 
-            pooled = self._mean_pool(
-                output.last_hidden_state,
-                encoded["attention_mask"],
-            )
-            all_embeddings.append(pooled.cpu().float().numpy())
+            del encoded, output, pooled
+            if self.device == "cpu":
+                gc.collect()
 
         embeddings = np.concatenate(all_embeddings, axis=0)
         return self._l2_normalize(embeddings)

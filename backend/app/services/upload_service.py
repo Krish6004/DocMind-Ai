@@ -129,50 +129,68 @@ class UploadService:
                 details={"filename": sanitized_filename, "error": str(exc)},
             ) from exc
 
+        if not doc_text or not doc_text.strip():
+            logger.warning("Document '%s' contains no extractable text content", sanitized_filename)
+            if target_path.exists():
+                target_path.unlink(missing_ok=True)
+            raise ValidationException(
+                f"Document '{sanitized_filename}' has no extractable text content. Scanned image-only PDFs without OCR text cannot be indexed.",
+                details={"filename": sanitized_filename},
+            )
+
         # 6. Call existing chunker (offloaded to threadpool)
         chunks = await asyncio.to_thread(self.chunker.split_text, doc_text)
         chunk_count = len(chunks)
         logger.info("Generated %d chunks for document '%s'", chunk_count, sanitized_filename)
 
+        if chunk_count == 0:
+            if target_path.exists():
+                target_path.unlink(missing_ok=True)
+            raise ValidationException(
+                f"Document '{sanitized_filename}' produced 0 chunks after text splitting.",
+                details={"filename": sanitized_filename},
+            )
+
         # 7. Call existing embedding pipeline & update vector store
-        if chunk_count > 0:
-            chunk_texts = [c["text"] for c in chunks]
-            user_file_key = f"{user_id}:{sanitized_filename}"
-            chunk_metas = [
-                {
-                    "source": str(target_path),
-                    "filename": sanitized_filename,
-                    "user_id": user_id,
-                    "user_file_key": user_file_key,
-                    "chunk_index": c["chunk_index"],
-                    "file_type": doc_metadata.get("file_type", suffix.lstrip(".")),
-                    "file_size": file_size,
-                    "upload_timestamp": doc_metadata.get("upload_timestamp", datetime.now(timezone.utc).isoformat()),
-                    "page_count": doc_metadata.get("page_count"),
-                }
-                for c in chunks
-            ]
+        chunk_texts = [c["text"] for c in chunks]
+        user_file_key = f"{user_id}:{sanitized_filename}"
+        chunk_metas = [
+            {
+                "source": str(target_path),
+                "filename": sanitized_filename,
+                "user_id": user_id,
+                "user_file_key": user_file_key,
+                "chunk_index": c["chunk_index"],
+                "file_type": doc_metadata.get("file_type", suffix.lstrip(".")),
+                "file_size": file_size,
+                "upload_timestamp": doc_metadata.get("upload_timestamp", datetime.now(timezone.utc).isoformat()),
+                "page_count": doc_metadata.get("page_count"),
+            }
+            for c in chunks
+        ]
 
-            embeddings = await asyncio.to_thread(self.embedding_model.embed_texts, chunk_texts, 32, False)
+        # Use batch_size 4 on CPU to guarantee memory remains strictly under 512MB RAM
+        embeddings = await asyncio.to_thread(self.embedding_model.embed_texts, chunk_texts, 4, False)
 
-            # Synchronize VectorStore: Remove prior chunks for this user's file only
-            if user_id and user_id != "default":
-                self.vector_store.delete_by_metadata("user_file_key", user_file_key)
-            else:
-                self.vector_store.delete_by_filename(sanitized_filename)
-            self.vector_store.add(embeddings, chunk_texts, chunk_metas)
+        import gc
+        gc.collect()
 
-            # Persist VectorStore state to data/store
-            store_dir = self.settings.STORE_DIR
-            store_dir.mkdir(parents=True, exist_ok=True)
-            store_path = store_dir / "vector_store"
-            try:
-                await asyncio.to_thread(self.vector_store.save, str(store_path))
-                logger.info("Persisted VectorStore (%d chunks) to '%s'", len(self.vector_store), store_path)
-            except Exception as exc:
-                logger.warning("Failed to persist VectorStore to disk: %s", exc)
+        # Synchronize VectorStore: Remove prior chunks for this user's file only
+        if user_id and user_id != "default":
+            self.vector_store.delete_by_metadata("user_file_key", user_file_key)
         else:
-            logger.warning("Document '%s' produced 0 chunks (empty content after parsing)", sanitized_filename)
+            self.vector_store.delete_by_filename(sanitized_filename)
+        self.vector_store.add(embeddings, chunk_texts, chunk_metas)
+
+        # Persist VectorStore state to data/store
+        store_dir = self.settings.STORE_DIR
+        store_dir.mkdir(parents=True, exist_ok=True)
+        store_path = store_dir / "vector_store"
+        try:
+            await asyncio.to_thread(self.vector_store.save, str(store_path))
+            logger.info("Persisted VectorStore (%d chunks) to '%s'", len(self.vector_store), store_path)
+        except Exception as exc:
+            logger.warning("Failed to persist VectorStore to disk: %s", exc)
 
         # 8. Save metadata to SQLite (scoped by user_id)
         existing_doc_stmt = select(DocumentModel).where(

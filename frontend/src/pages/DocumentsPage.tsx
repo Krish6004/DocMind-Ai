@@ -53,36 +53,65 @@ export const DocumentsPage: React.FC = () => {
     return matchesSearch && matchesFormat
   })
 
-  // Upload handler
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
+  // Batch and single upload handler
+  const handleFilesUpload = async (fileList: FileList | File[]) => {
+    const filesArray = Array.from(fileList).filter((f) => {
+      const ext = '.' + f.name.split('.').pop()?.toLowerCase()
+      return ['.pdf', '.docx', '.txt', '.md'].includes(ext)
+    })
 
-    const file = files[0]
-    setIsUploading(true)
-    setUploadProgress(0)
-    setUploadStatus('Uploading file...')
-
-    try {
-      const res = await DocumentService.uploadDocument(file, (percent) => {
-        setUploadProgress(percent)
-        if (percent >= 100) {
-          setUploadStatus('Extracting text & computing vector embeddings...')
-        } else {
-          setUploadStatus(`Uploading: ${percent}%`)
-        }
-      })
-      success('Document Indexed', `${res.filename} was successfully processed and chunked.`)
-      queryClient.invalidateQueries({ queryKey: ['documents-list'] })
-      queryClient.invalidateQueries({ queryKey: ['backend-health'] })
-    } catch (err: any) {
-      toastError('Upload Failed', err.message || 'Error processing document.')
-    } finally {
-      setIsUploading(false)
-      setUploadProgress(null)
-      setUploadStatus('')
-      if (fileInputRef.current) fileInputRef.current.value = ''
+    if (filesArray.length === 0) {
+      toastError('Invalid File Format', 'Please upload valid .pdf, .docx, .txt, or .md documents.')
+      return
     }
+
+    setIsUploading(true)
+    let successCount = 0
+    let failureCount = 0
+
+    for (let i = 0; i < filesArray.length; i++) {
+      const file = filesArray[i]
+      const currentDocNum = i + 1
+      const totalDocs = filesArray.length
+      const prefix = totalDocs > 1 ? `[${currentDocNum}/${totalDocs}] ` : ''
+
+      setUploadProgress(0)
+      setUploadStatus(`${prefix}Uploading ${file.name}...`)
+
+      try {
+        const res = await DocumentService.uploadDocument(file, (percent) => {
+          setUploadProgress(percent)
+          if (percent >= 100) {
+            setUploadStatus(`${prefix}Processing & indexing ${file.name}...`)
+          } else {
+            setUploadStatus(`${prefix}Uploading ${file.name}: ${percent}%`)
+          }
+        })
+        successCount++
+        queryClient.invalidateQueries({ queryKey: ['documents-list'] })
+        queryClient.invalidateQueries({ queryKey: ['backend-health'] })
+        if (totalDocs === 1) {
+          success('Document Indexed', `${res.filename} was successfully processed and chunked.`)
+        }
+      } catch (err: any) {
+        failureCount++
+        toastError(`Failed: ${file.name}`, err.message || 'Error processing document.')
+      }
+    }
+
+    if (filesArray.length > 1) {
+      if (successCount > 0) {
+        success(
+          'Upload Complete',
+          `Successfully processed and indexed ${successCount} of ${filesArray.length} documents.`
+        )
+      }
+    }
+
+    setIsUploading(false)
+    setUploadProgress(null)
+    setUploadStatus('')
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   // Delete handler
@@ -102,12 +131,17 @@ export const DocumentsPage: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
-      {/* Hidden File Input */}
+      {/* Hidden File Input with multiple selection */}
       <input
         type="file"
         ref={fileInputRef}
-        onChange={handleFileUpload}
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            handleFilesUpload(e.target.files)
+          }
+        }}
         accept=".pdf,.docx,.txt,.md"
+        multiple
         className="hidden"
       />
 
@@ -131,7 +165,7 @@ export const DocumentsPage: React.FC = () => {
           onClick={() => fileInputRef.current?.click()}
           className="shadow-glow-cerulean/30"
         >
-          {isUploading ? (uploadStatus || 'Ingesting Document...') : 'Upload Document'}
+          {isUploading ? (uploadStatus || 'Ingesting Documents...') : 'Upload Documents'}
         </Button>
       </div>
 
@@ -141,11 +175,8 @@ export const DocumentsPage: React.FC = () => {
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault()
-          if (!isUploading && e.dataTransfer.files && e.dataTransfer.files[0]) {
-            const fakeEvent = {
-              target: { files: e.dataTransfer.files },
-            } as unknown as React.ChangeEvent<HTMLInputElement>
-            handleFileUpload(fakeEvent)
+          if (!isUploading && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFilesUpload(e.dataTransfer.files)
           }
         }}
         className={`rounded-2xl glass-panel p-6 border border-dashed transition-all text-center group bg-jet-950/40 ${

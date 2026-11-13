@@ -21,6 +21,9 @@ from backend.app.core.logging import get_logger, setup_backend_logging
 
 logger = get_logger(__name__)
 
+# Strong references for background tasks to prevent Python GC collection
+_background_tasks: set[Any] = set()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -70,7 +73,9 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.warning("Could not pre-warm AI models at startup: %s", exc)
 
-    asyncio.create_task(_prewarm_ai_models())
+    prewarm_task = asyncio.create_task(_prewarm_ai_models())
+    _background_tasks.add(prewarm_task)
+    prewarm_task.add_done_callback(_background_tasks.discard)
 
     yield
 

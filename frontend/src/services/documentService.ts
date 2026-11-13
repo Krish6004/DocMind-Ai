@@ -30,7 +30,8 @@ export class DocumentService {
 
     const response = await apiClient.post<ApiResponse<DocumentUploadResponse>>('/upload', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        // Let the browser and Axios automatically detect FormData and attach the boundary parameter
+        'Content-Type': undefined,
       },
       timeout: 300000, // 5 minutes timeout for document upload and RAG indexing
       onUploadProgress: (progressEvent) => {
